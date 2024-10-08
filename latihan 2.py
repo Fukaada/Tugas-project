@@ -32,8 +32,8 @@ while True:
         sisi2 = float(input("Masukkan sisi 2: "))
         sisi3 = float(input("Masukkan sisi 3: "))
 
-        # Keluar dari program jika salah satu sisi adalah 0
-        if sisi1 == 0 or sisi2 == 0 or sisi3 == 0:
+        # Keluar dari program jika semua sisi adalah 0
+        if sisi1 == 0 and sisi2 == 0 and sisi3 == 0:
             print("Terimakasih Telah melakukan pengecekan sisi")
             break
 
