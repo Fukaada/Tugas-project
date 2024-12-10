@@ -1,0 +1,145 @@
+pip install pandas numpy scikit-learn matplotlib seaborn openpyxl
+
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
+import seaborn as sns
+from tkinter import Tk, filedialog
+
+# ========================== Fungsi Utility ==========================
+def upload_and_load_data():
+    """Upload dan membaca file data Excel."""
+    print("\nSilakan pilih file Excel (contoh: kurs_gbp.xlsx) dari sistem file Anda.")
+    root = Tk()
+    root.withdraw()  # Menyembunyikan jendela utama
+    file_name = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
+    if not file_name:
+        print("Tidak ada file yang dipilih.")
+        return None
+    try:
+        df = pd.read_excel(file_name)
+        df['Tanggal'] = pd.to_datetime(df['Tanggal'])
+        df.set_index('Tanggal', inplace=True)
+        print(f"Data dari {file_name} berhasil dimuat.")
+        return df
+    except Exception as e:
+        print(f"Terjadi kesalahan saat membaca file: {e}")
+        return None
+
+def create_features_and_labels(df):
+    """Membuat fitur X_t-2, X_t-1 dan label X_t."""
+    df['X_t-2'] = df['Kurs Jual'].shift(2)
+    df['X_t-1'] = df['Kurs Jual'].shift(1)
+    df['X_t'] = df['Kurs Jual']
+    df['Label Naik Turun'] = (df['Kurs Jual'].diff() > 0).astype(int)
+    df.dropna(inplace=True)
+    return df
+
+def train_models(X_train, y_train, y_train_logreg):
+    """Melatih model KNN dan Logistic Regression."""
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+
+    knn_model = KNeighborsRegressor(n_neighbors=5)
+    knn_model.fit(X_train_scaled, y_train)
+
+    logreg_model = LogisticRegression(max_iter=1000)
+    logreg_model.fit(X_train_scaled, y_train_logreg)
+
+    return knn_model, logreg_model, scaler
+
+def predict_future(df, knn_model, logreg_model, scaler):
+    """Melakukan prediksi untuk 9-11 November 2024."""
+    X_pred = df.loc['2024-11-07':'2024-11-08', ['X_t-2', 'X_t-1']]
+    X_pred_scaled = scaler.transform(X_pred)
+
+    pred_9_nov = knn_model.predict([X_pred_scaled[-1]])
+    logreg_9_nov = logreg_model.predict([X_pred_scaled[-1]])
+
+    X_pred.loc['2024-11-09'] = [X_pred.iloc[-1, 1], pred_9_nov[0]]
+    pred_10_nov = knn_model.predict(scaler.transform([X_pred.loc['2024-11-09'].values]))
+
+    X_pred.loc['2024-11-10'] = [X_pred.loc['2024-11-09', 1], pred_10_nov[0]]
+    pred_11_nov = knn_model.predict(scaler.transform([X_pred.loc['2024-11-10'].values]))
+
+    return pred_9_nov, pred_10_nov, pred_11_nov, logreg_9_nov
+
+def evaluate_performance(actual_logreg, pred_logreg):
+    """Evaluasi kinerja model Logistic Regression."""
+    acc = accuracy_score(actual_logreg, pred_logreg)
+    prec = precision_score(actual_logreg, pred_logreg)
+    rec = recall_score(actual_logreg, pred_logreg)
+    f1 = f1_score(actual_logreg, pred_logreg)
+    return acc, prec, rec, f1
+
+def visualize_predictions(df, pred_9_nov, pred_10_nov, pred_11_nov):
+    """Visualisasi prediksi vs data aktual."""
+    plt.figure(figsize=(10, 6))
+    plt.plot(df['Kurs Jual'], label='Kurs Aktual')
+    plt.scatter(['2024-11-09', '2024-11-10', '2024-11-11'],
+                [pred_9_nov[0], pred_10_nov[0], pred_11_nov[0]],
+                color='red', label='Prediksi', marker='x')
+    plt.legend()
+    plt.xlabel('Tanggal')
+    plt.ylabel('Kurs Jual')
+    plt.title('Prediksi Kurs Jual GBP 9-11 November 2024')
+    plt.show()
+
+# ========================== Menu Utama ==========================
+def main_menu():
+    print("\n=== Sistem Prediksi Kurs GBP ===")
+    print("1. Upload dan Baca Data")
+    print("2. Latih Model")
+    print("3. Prediksi Masa Depan")
+    print("4. Visualisasi Prediksi")
+    print("0. Keluar")
+    print("===============================\n")
+
+def main():
+    data = None
+    knn_model, logreg_model, scaler = None, None, None
+
+    while True:
+        main_menu()
+        choice = input("Pilih menu: ")
+
+        if choice == '1':
+            data = upload_and_load_data()
+            if data is not None:
+                data = create_features_and_labels(data)
+                print("\nData berhasil di-upload dan diproses!")
+                print(data.head())
+
+        elif choice == '2' and data is not None:
+            train_data = data.loc[:'2021-09-30']
+            X_train = train_data[['X_t-2', 'X_t-1']]
+            y_train = train_data['X_t']
+            y_train_logreg = train_data['Label Naik Turun']
+
+            knn_model, logreg_model, scaler = train_models(X_train, y_train, y_train_logreg)
+            print("\nModel berhasil dilatih!")
+
+        elif choice == '3' and knn_model and logreg_model:
+            try:
+                pred_9_nov, pred_10_nov, pred_11_nov, logreg_9_nov = predict_future(data, knn_model, logreg_model, scaler)
+                print(f"\nPrediksi Kurs Jual 9-11 Nov: {pred_9_nov[0]}, {pred_10_nov[0]}, {pred_11_nov[0]}")
+            except Exception as e:
+                print(f"Kesalahan dalam prediksi: {e}")
+
+        elif choice == '4' and knn_model and logreg_model:
+            visualize_predictions(data, pred_9_nov, pred_10_nov, pred_11_nov)
+
+        elif choice == '0':
+            print("\nKeluar dari sistem. Terima kasih!")
+            break
+
+        else:
+            print("\nPilihan tidak valid atau data belum di-upload.")
+
+if __name__ == "__main__":
+    main()
