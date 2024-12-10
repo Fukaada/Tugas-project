@@ -10,14 +10,27 @@ from google.colab import files
 
 # ========================== Fungsi Utility ==========================
 def upload_and_load_data():
-    """Upload dan membaca file data Excel."""
+    """Upload dan membaca file data Excel dengan format khusus."""
     print("Silakan upload file Excel (contoh: kurs_gbp.xlsx):")
     uploaded = files.upload()
     file_name = list(uploaded.keys())[0]
-    df = pd.read_excel(file_name)
-    df['Tanggal'] = pd.to_datetime(df['Tanggal'])
-    df.set_index('Tanggal', inplace=True)
-    return df
+    try:
+        # Membaca file Excel
+        df = pd.read_excel(file_name, decimal=',')  # Tambahkan argumen decimal untuk menangani koma
+        required_columns = ['Tanggal', 'Kurs Jual']
+        if not all(col in df.columns for col in required_columns):
+            print(f"Error: File harus memiliki kolom {required_columns}")
+            return None
+        
+        # Konversi tanggal
+        df['Tanggal'] = pd.to_datetime(df['Tanggal'], format='%m/%d/%Y')
+        
+        # Menjadikan tanggal sebagai index
+        df.set_index('Tanggal', inplace=True)
+        return df
+    except Exception as e:
+        print(f"Error membaca file: {e}")
+        return None
 
 def create_features_and_labels(df):
     """Membuat fitur X_t-2, X_t-1 dan label X_t."""
@@ -39,17 +52,21 @@ def train_models(X_train, y_train, y_train_logreg):
 
 def predict_future(df, knn_model, logreg_model):
     """Melakukan prediksi untuk 9-11 November 2024."""
-    X_pred = df.loc['2024-11-07':'2024-11-08', ['X_t-2', 'X_t-1']]
-    pred_9_nov = knn_model.predict([X_pred.iloc[-1].values])
-    logreg_9_nov = logreg_model.predict([X_pred.iloc[-1].values])
-    
-    X_pred.loc['2024-11-09'] = [X_pred.iloc[-1, 1], pred_9_nov[0]]
-    pred_10_nov = knn_model.predict([X_pred.loc['2024-11-09'].values])
-    
-    X_pred.loc['2024-11-10'] = [X_pred.loc['2024-11-09', 1], pred_10_nov[0]]
-    pred_11_nov = knn_model.predict([X_pred.loc['2024-11-10'].values])
-    
-    return pred_9_nov, pred_10_nov, pred_11_nov, logreg_9_nov
+    try:
+        X_pred = df.loc['2024-11-07':'2024-11-08', ['X_t-2', 'X_t-1']]
+        pred_9_nov = knn_model.predict([X_pred.iloc[-1].values])
+        logreg_9_nov = logreg_model.predict([X_pred.iloc[-1].values])
+        
+        X_pred.loc['2024-11-09'] = [X_pred.iloc[-1, 1], pred_9_nov[0]]
+        pred_10_nov = knn_model.predict([X_pred.loc['2024-11-09'].values])
+        
+        X_pred.loc['2024-11-10'] = [X_pred.loc['2024-11-09', 1], pred_10_nov[0]]
+        pred_11_nov = knn_model.predict([X_pred.loc['2024-11-10'].values])
+        
+        return pred_9_nov, pred_10_nov, pred_11_nov, logreg_9_nov
+    except Exception as e:
+        print(f"Error prediksi masa depan: {e}")
+        return None, None, None, None
 
 def evaluate_performance(actual_logreg, pred_logreg):
     """Evaluasi kinerja model Logistic Regression."""
@@ -89,9 +106,10 @@ def main():
         choice = input("Pilih menu: ")
         if choice == '1':
             data = upload_and_load_data()
-            data = create_features_and_labels(data)
-            print("Data berhasil di-upload dan diproses!")
-            print(data.head())
+            if data is not None:
+                data = create_features_and_labels(data)
+                print("Data berhasil di-upload dan diproses!")
+                print(data.head())
         elif choice == '2' and data is not None:
             train_data = data.loc[:'2021-09-30']
             test_data = data.loc['2021-10-01':]
@@ -102,9 +120,10 @@ def main():
             print("Model berhasil dilatih!")
         elif choice == '3' and knn_model and logreg_model:
             pred_9, pred_10, pred_11, logreg_pred_9 = predict_future(data, knn_model, logreg_model)
-            print(f"Prediksi Kurs Jual (9 November 2024): {pred_9[0]}")
-            print(f"Prediksi Kurs Jual (10 November 2024): {pred_10[0]}")
-            print(f"Prediksi Kurs Jual (11 November 2024): {pred_11[0]}")
+            if pred_9 is not None:
+                print(f"Prediksi Kurs Jual (9 November 2024): {pred_9[0]}")
+                print(f"Prediksi Kurs Jual (10 November 2024): {pred_10[0]}")
+                print(f"Prediksi Kurs Jual (11 November 2024): {pred_11[0]}")
         elif choice == '4' and data is not None:
             actual_logreg = data.loc['2024-11-09':'2024-11-11', 'Label Naik Turun']
             pred_logreg = [logreg_pred_9[0], 0, 0]  # Sesuaikan jika lebih lanjut
