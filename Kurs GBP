@@ -1,35 +1,23 @@
-pip install pandas numpy scikit-learn matplotlib seaborn openpyxl
-
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import seaborn as sns
-from tkinter import Tk, filedialog
+from google.colab import files
 
 # ========================== Fungsi Utility ==========================
 def upload_and_load_data():
     """Upload dan membaca file data Excel."""
-    print("\nSilakan pilih file Excel (contoh: kurs_gbp.xlsx) dari sistem file Anda.")
-    root = Tk()
-    root.withdraw()  # Menyembunyikan jendela utama
-    file_name = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
-    if not file_name:
-        print("Tidak ada file yang dipilih.")
-        return None
-    try:
-        df = pd.read_excel(file_name)
-        df['Tanggal'] = pd.to_datetime(df['Tanggal'])
-        df.set_index('Tanggal', inplace=True)
-        print(f"Data dari {file_name} berhasil dimuat.")
-        return df
-    except Exception as e:
-        print(f"Terjadi kesalahan saat membaca file: {e}")
-        return None
+    print("Silakan upload file Excel (contoh: kurs_gbp.xlsx):")
+    uploaded = files.upload()
+    file_name = list(uploaded.keys())[0]
+    df = pd.read_excel(file_name)
+    df['Tanggal'] = pd.to_datetime(df['Tanggal'])
+    df.set_index('Tanggal', inplace=True)
+    return df
 
 def create_features_and_labels(df):
     """Membuat fitur X_t-2, X_t-1 dan label X_t."""
@@ -42,31 +30,25 @@ def create_features_and_labels(df):
 
 def train_models(X_train, y_train, y_train_logreg):
     """Melatih model KNN dan Logistic Regression."""
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-
     knn_model = KNeighborsRegressor(n_neighbors=5)
-    knn_model.fit(X_train_scaled, y_train)
-
+    knn_model.fit(X_train, y_train)
+    
     logreg_model = LogisticRegression(max_iter=1000)
-    logreg_model.fit(X_train_scaled, y_train_logreg)
+    logreg_model.fit(X_train, y_train_logreg)
+    return knn_model, logreg_model
 
-    return knn_model, logreg_model, scaler
-
-def predict_future(df, knn_model, logreg_model, scaler):
+def predict_future(df, knn_model, logreg_model):
     """Melakukan prediksi untuk 9-11 November 2024."""
     X_pred = df.loc['2024-11-07':'2024-11-08', ['X_t-2', 'X_t-1']]
-    X_pred_scaled = scaler.transform(X_pred)
-
-    pred_9_nov = knn_model.predict([X_pred_scaled[-1]])
-    logreg_9_nov = logreg_model.predict([X_pred_scaled[-1]])
-
+    pred_9_nov = knn_model.predict([X_pred.iloc[-1].values])
+    logreg_9_nov = logreg_model.predict([X_pred.iloc[-1].values])
+    
     X_pred.loc['2024-11-09'] = [X_pred.iloc[-1, 1], pred_9_nov[0]]
-    pred_10_nov = knn_model.predict(scaler.transform([X_pred.loc['2024-11-09'].values]))
-
+    pred_10_nov = knn_model.predict([X_pred.loc['2024-11-09'].values])
+    
     X_pred.loc['2024-11-10'] = [X_pred.loc['2024-11-09', 1], pred_10_nov[0]]
-    pred_11_nov = knn_model.predict(scaler.transform([X_pred.loc['2024-11-10'].values]))
-
+    pred_11_nov = knn_model.predict([X_pred.loc['2024-11-10'].values])
+    
     return pred_9_nov, pred_10_nov, pred_11_nov, logreg_9_nov
 
 def evaluate_performance(actual_logreg, pred_logreg):
@@ -81,65 +63,63 @@ def visualize_predictions(df, pred_9_nov, pred_10_nov, pred_11_nov):
     """Visualisasi prediksi vs data aktual."""
     plt.figure(figsize=(10, 6))
     plt.plot(df['Kurs Jual'], label='Kurs Aktual')
-    plt.scatter(['2024-11-09', '2024-11-10', '2024-11-11'],
-                [pred_9_nov[0], pred_10_nov[0], pred_11_nov[0]],
+    plt.scatter(['2024-11-09', '2024-11-10', '2024-11-11'], 
+                [pred_9_nov[0], pred_10_nov[0], pred_11_nov[0]], 
                 color='red', label='Prediksi', marker='x')
     plt.legend()
-    plt.xlabel('Tanggal')
-    plt.ylabel('Kurs Jual')
     plt.title('Prediksi Kurs Jual GBP 9-11 November 2024')
     plt.show()
 
 # ========================== Menu Utama ==========================
 def main_menu():
-    print("\n=== Sistem Prediksi Kurs GBP ===")
+    print("=== Sistem Prediksi Kurs GBP ===")
     print("1. Upload dan Baca Data")
     print("2. Latih Model")
     print("3. Prediksi Masa Depan")
-    print("4. Visualisasi Prediksi")
+    print("4. Evaluasi Model")
+    print("5. Visualisasi Prediksi")
     print("0. Keluar")
-    print("===============================\n")
+    print("===============================")
 
 def main():
     data = None
-    knn_model, logreg_model, scaler = None, None, None
-
+    knn_model, logreg_model = None, None
     while True:
         main_menu()
         choice = input("Pilih menu: ")
-
         if choice == '1':
             data = upload_and_load_data()
-            if data is not None:
-                data = create_features_and_labels(data)
-                print("\nData berhasil di-upload dan diproses!")
-                print(data.head())
-
+            data = create_features_and_labels(data)
+            print("Data berhasil di-upload dan diproses!")
+            print(data.head())
         elif choice == '2' and data is not None:
             train_data = data.loc[:'2021-09-30']
+            test_data = data.loc['2021-10-01':]
             X_train = train_data[['X_t-2', 'X_t-1']]
             y_train = train_data['X_t']
             y_train_logreg = train_data['Label Naik Turun']
-
-            knn_model, logreg_model, scaler = train_models(X_train, y_train, y_train_logreg)
-            print("\nModel berhasil dilatih!")
-
+            knn_model, logreg_model = train_models(X_train, y_train, y_train_logreg)
+            print("Model berhasil dilatih!")
         elif choice == '3' and knn_model and logreg_model:
-            try:
-                pred_9_nov, pred_10_nov, pred_11_nov, logreg_9_nov = predict_future(data, knn_model, logreg_model, scaler)
-                print(f"\nPrediksi Kurs Jual 9-11 Nov: {pred_9_nov[0]}, {pred_10_nov[0]}, {pred_11_nov[0]}")
-            except Exception as e:
-                print(f"Kesalahan dalam prediksi: {e}")
-
-        elif choice == '4' and knn_model and logreg_model:
-            visualize_predictions(data, pred_9_nov, pred_10_nov, pred_11_nov)
-
+            pred_9, pred_10, pred_11, logreg_pred_9 = predict_future(data, knn_model, logreg_model)
+            print(f"Prediksi Kurs Jual (9 November 2024): {pred_9[0]}")
+            print(f"Prediksi Kurs Jual (10 November 2024): {pred_10[0]}")
+            print(f"Prediksi Kurs Jual (11 November 2024): {pred_11[0]}")
+        elif choice == '4' and data is not None:
+            actual_logreg = data.loc['2024-11-09':'2024-11-11', 'Label Naik Turun']
+            pred_logreg = [logreg_pred_9[0], 0, 0]  # Sesuaikan jika lebih lanjut
+            acc, prec, rec, f1 = evaluate_performance(actual_logreg, pred_logreg)
+            print(f"Akurasi: {acc*100:.2f}%")
+            print(f"Precision: {prec*100:.2f}%")
+            print(f"Recall: {rec*100:.2f}%")
+            print(f"F1-Score: {f1*100:.2f}%")
+        elif choice == '5' and data is not None:
+            visualize_predictions(data, pred_9, pred_10, pred_11)
         elif choice == '0':
-            print("\nKeluar dari sistem. Terima kasih!")
+            print("Keluar dari sistem. Terima kasih!")
             break
-
         else:
-            print("\nPilihan tidak valid atau data belum di-upload.")
+            print("Pilihan tidak valid atau data belum di-upload.")
 
 if __name__ == "__main__":
     main()
